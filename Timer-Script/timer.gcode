@@ -12,12 +12,14 @@ verbose: False
 variable_hours_need: 0
 variable_minutes_need: 0
 variable_flag: 0
+variable_led_need: 0
 gcode:
     {% set hours = params.HOURS|default(0) | int %}
 	{% set minutes = params.MINUTES|default(0) | int %}
 	{% set is_duration = params.IS_DURATION|default(0) | int %}
+	{% set led = params.LED_BRIGHTNESS|default(0) | float %}
 
-    {% if hours < 0 or hours > 23 or minutes < 0 or minutes > 59 or (is_duration != 0 and is_duration != 1) %}
+    {% if hours < 0 or hours > 23 or minutes < 0 or minutes > 59 or (is_duration != 0 and is_duration != 1) or led < 0 or led > 1 %}
 		RESPOND TYPE=error MSG="Abnormal input! Change parameters and run this macro again"
 	{% else %}
 		{% if hours == 0 and minutes == 0 %}
@@ -29,11 +31,12 @@ gcode:
 			SAVE_VARIABLE VARIABLE=hours_need VALUE={hours}
 			SAVE_VARIABLE VARIABLE=minutes_need VALUE={minutes}
 			SAVE_VARIABLE VARIABLE=flag VALUE=1
+			SAVE_VARIABLE VARIABLE=led_need VALUE={led}
 			SAVE_CONFIG
 		{% else %}
 			RESPOND TYPE=command MSG="Printing will continue AFTER {hours} hours and {minutes} minutes"
 			{% set wait = hours * 60 + minutes %}
-			_timer_wait WAIT={wait}
+			_timer_wait WAIT={wait} LB={led}
 		{% endif %}
 	{% endif %}
 
@@ -45,21 +48,20 @@ gcode:
 		RESPOND TYPE=command MSG="Printing will continue AT {vars.hours_need}:{vars.minutes_need}"
 		SAVE_VARIABLE VARIABLE=flag VALUE=0
 		{% set wait = ((24 + vars.hours_need - printer["gcode_macro _now"].hr) * 60 + (vars.minutes_need - printer["gcode_macro _now"].min)) % (24 * 60) %}
-		_timer_wait WAIT={wait}
+		_timer_wait WAIT={wait} LB={vars.led_need}
 	{% endif %}
 
 [gcode_macro _timer_wait]
 gcode:
 	{% set wait = params.WAIT|default(60) | int %}
+	{% set led = params.LB|default(0) | float %}
 		
-    {% for i in range(wait) %}
+    SET_PIN PIN=LED VALUE=0
+	{% for i in range(wait) %}
         {% if (i - wait % 60) % 60 == 0 %}
             RESPOND TYPE=command MSG="Waiting... Remain {(wait - i) // 60} hours before printing"
         {% endif %}
-        SET_PIN PIN=LED VALUE=0
-        G4 P58000
-        SET_PIN PIN=LED VALUE=0.05
-        G4 P2000
+        G4 P60000
     {% endfor %}
+	SET_PIN PIN=LED VALUE={led}
     RESPOND TYPE=command MSG="Printing will continue right now"
-    SET_PIN PIN=LED VALUE=0.25
